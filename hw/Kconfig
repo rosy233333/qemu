@@ -68,6 +68,9 @@ source sparc64/Kconfig
 source tricore/Kconfig
 source xtensa/Kconfig
 
+# async task scheduler device Kconfig
+source ats/Kconfig
+
 # Symbols used by multiple targets
 config TEST_DEVICES
     bool

@@ -77,6 +77,7 @@ enum {
     VIRT_FW_CFG,
     VIRT_IMSIC_M,
     VIRT_IMSIC_S,
+    VIRT_LITE_EXECUTOR,
     VIRT_FLASH,
     VIRT_DRAM,
     VIRT_PCIE_MMIO,
