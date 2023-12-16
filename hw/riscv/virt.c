@@ -53,6 +53,7 @@
 #include "hw/display/ramfb.h"
 #include "hw/acpi/aml-build.h"
 #include "qapi/qapi-visit-common.h"
+#include "hw/ats/riscv_lite_executor.h"
 
 /*
  * The virt machine physical address space used by some of the devices
@@ -1439,6 +1440,8 @@ static void virt_machine_init(MachineState *machine)
                     RISCV_ACLINT_DEFAULT_TIMEBASE_FREQ, true);
             }
         }
+
+        riscv_lite_executor_create(memmap[VIRT_LITE_EXECUTOR].base);
 
         /* Per-socket interrupt controller */
         if (s->aia_type == VIRT_AIA_TYPE_NONE) {
