@@ -515,6 +515,30 @@ static void create_fdt_socket_plic(RISCVVirtState *s,
     g_free(plic_cells);
 }
 
+static void create_fdt_socket_lite_executor(RISCVVirtState *s,
+                                    const MemMapEntry *memmap, int socket,
+                                    uint32_t *phandle,
+                                    uint32_t *intc_phandles) {
+    char *lite_executor_name;
+    unsigned long lite_executor_addr;
+    MachineState *mc = MACHINE(s);
+    static const char *const lite_executor_compat[1] = {"lite_executor"};
+
+
+    lite_executor_addr = memmap[VIRT_LITE_EXECUTOR].base + (memmap[VIRT_LITE_EXECUTOR].size * socket);
+    lite_executor_name = g_strdup_printf("/soc/lite_executor@%lx", lite_executor_addr);
+    qemu_fdt_add_subnode(mc->fdt, lite_executor_name);
+    qemu_fdt_setprop_string_array(mc->fdt, lite_executor_name, "compatible",
+                                  (char **)&lite_executor_compat,
+                                  ARRAY_SIZE(lite_executor_compat));
+    qemu_fdt_setprop(mc->fdt, lite_executor_name, "interrupt-controller", NULL, 0);
+    qemu_fdt_setprop_cells(mc->fdt, lite_executor_name, "reg", 0x0, lite_executor_addr, 0x0,
+                           memmap[VIRT_LITE_EXECUTOR].size);
+    riscv_socket_fdt_write_id(mc, lite_executor_name, socket);
+    g_free(lite_executor_name);
+
+}
+
 static uint32_t imsic_num_bits(uint32_t count)
 {
     uint32_t ret = 0;
@@ -806,6 +830,8 @@ static void create_fdt_sockets(RISCVVirtState *s, const MemMapEntry *memmap,
                                         xplic_phandles,
                                         s->soc[socket].num_harts);
             }
+            create_fdt_socket_lite_executor(s, memmap, socket, phandle,
+                                &intc_phandles[phandle_pos]);
         }
     }
 
