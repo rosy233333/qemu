@@ -51,6 +51,14 @@ static const MemoryRegionOps riscv_lite_executor_ops = {
     }
 };
 
+static void riscv_lite_executor_irq_request(void *opaque, int irq, int level)
+{
+    info_report("RISCV LITE EXECUTOR RECEIVE IRQ: %d", irq);
+
+    SiFivePLICState *s = opaque;
+
+    // 外部中断到来后的操作，待实现
+}
 
 static void riscv_lite_executor_realize(DeviceState *dev, Error **errp)
 {
@@ -65,13 +73,38 @@ static void riscv_lite_executor_realize(DeviceState *dev, Error **errp)
 
     info_report("LOW 0x%x HIGH 0x%x", (uint32_t)lite_executor->mmio.addr, (uint32_t)lite_executor->mmio.size);
 
+    // 如果有为lite executor增添了数组属性，在这里申请空间
     lite_executor->tasks = g_new0(AsyncTaskRef, ASYNC_TASK_MAX_NUM);
 
+    //注册GPIO端口，参考sifive_plic.c:380..387
+    {
+        qdev_init_gpio_in(dev, riscv_lite_executor_irq_request, lite_executor->num_sources);
+
+        //这几句应该是用于向CPU通知中断的输出端口？所以应该在lite_executor中不需要？
+        // s->s_external_irqs = g_malloc(sizeof(qemu_irq) * s->num_harts);
+        // qdev_init_gpio_out(dev, s->s_external_irqs, s->num_harts);
+
+        // s->m_external_irqs = g_malloc(sizeof(qemu_irq) * s->num_harts);
+        // qdev_init_gpio_out(dev, s->m_external_irqs, s->num_harts);
+    }
+
+    // lite executor应该不需要调用riscv_cpu_claim_interrupts函数，因为它不会直接向CPU发中断信号。
 }
+
+// 为调度器新增的属性，参考了sifive_plic.c:426..442
+static Property riscv_lite_executor_properties[] = {
+    /* number of interrupt sources including interrupt source 0 */
+    DEFINE_PROP_UINT32("num-sources", RISCVLiteExecutor, num_sources, 1),
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static void riscv_lite_executor_class_init(ObjectClass *obj, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(obj);
+
+    // 为调度器注册新增的属性
+    device_class_set_props(dc, riscv_lite_executor_properties);
+
     dc->realize = riscv_lite_executor_realize;
 }
 
@@ -82,14 +115,19 @@ static const TypeInfo riscv_lite_executor_info = {
     .class_init    = riscv_lite_executor_class_init,
 };
 
-DeviceState *riscv_lite_executor_create(hwaddr addr)
+DeviceState *riscv_lite_executor_create(hwaddr addr, uint32_t num_sources)
 {
-    qemu_log("Create LITE EXECUTOR\n");
+    qemu_log("CREATE LITE EXECUTOR\n"); // 改了create的大小写:)
 
     DeviceState *dev = qdev_new(TYPE_RISCV_LITE_EXECUTOR);
 
+    // 设置新增的属性
+    qdev_prop_set_uint32(dev, "num-sources", num_sources);
+
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, addr);
+
+    // 因为lite_executor没有和CPU连接，所以不需要调用`qdev_connect_gpio_out`连接到CPU的中断线。
 
     return dev;
 }
