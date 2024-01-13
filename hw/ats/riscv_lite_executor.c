@@ -55,7 +55,7 @@ static void riscv_lite_executor_irq_request(void *opaque, int irq, int level)
 {
     info_report("RISCV LITE EXECUTOR RECEIVE IRQ: %d", irq);
 
-    SiFivePLICState *s = opaque;
+    // RISCVLiteExecutor *s = opaque;
 
     // 外部中断到来后的操作，待实现
 }
