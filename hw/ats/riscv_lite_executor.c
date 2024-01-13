@@ -26,11 +26,25 @@
 #include "hw/qdev-properties.h"
 #include "qemu/timer.h"
 #include "hw/ats/riscv_lite_executor.h"
+#include "qemu/queue.h"
 
 static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned size)
 {
     info_report("READ LITE EXECUTOR: ADDR 0x%lx", addr);
-
+    RISCVLiteExecutor *lite_executor = opaque;
+    if (addr == READ_TEST_OFFSET) {
+        TaskQueueHead *head = &lite_executor->task_queues[0].head;
+        uint64_t res = 0;
+        if (head->sqh_first != NULL) {
+            struct TaskQueueEntry *task_entry = head->sqh_first;
+            res = task_entry->data;
+            g_free(task_entry);
+            QSIMPLEQ_REMOVE_HEAD(head, next);
+        }
+        return res;
+    } else {
+        return 0;
+    }
     return 0;
 }
 
@@ -38,6 +52,12 @@ static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size)
 {
     info_report("WRITE LITE EXECUTOR: ADDR 0x%lx VALUE 0x%lx", addr, value);
+    RISCVLiteExecutor *lite_executor = opaque;
+    if (addr == WRITE_TEST_OFFSET) {
+        struct TaskQueueEntry *task_entry = g_new0(struct TaskQueueEntry, 1);
+        task_entry->data = value;
+        QSIMPLEQ_INSERT_TAIL(&lite_executor->task_queues[0].head, task_entry, next);
+    }
     
 }
 
@@ -64,8 +84,11 @@ static void riscv_lite_executor_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &lite_executor->mmio);
 
     info_report("LOW 0x%x HIGH 0x%x", (uint32_t)lite_executor->mmio.addr, (uint32_t)lite_executor->mmio.size);
-
-    lite_executor->tasks = g_new0(AsyncTaskRef, ASYNC_TASK_MAX_NUM);
+    lite_executor->task_queues = g_new0(TaskQueue, MAX_TASK_QUEUE);
+    int i = 0;
+    for(i = 0; i < MAX_TASK_QUEUE; i++) {
+        QSIMPLEQ_INIT(&lite_executor->task_queues[i].head);
+    }
 
 }
 
