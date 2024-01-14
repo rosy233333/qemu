@@ -92,7 +92,7 @@ static const MemMapEntry virt_memmap[] = {
     [VIRT_ACLINT_SSWI] =  {  0x2F00000,        0x4000 },
     [VIRT_PCIE_PIO] =     {  0x3000000,       0x10000 },
     [VIRT_PLATFORM_BUS] = {  0x4000000,     0x2000000 },
-    [VIRT_PLIC] =         {  0xc000000, VIRT_PLIC_SIZE(VIRT_CPUS_MAX * 2) },
+    // [VIRT_PLIC] =         {  0xc000000, VIRT_PLIC_SIZE(VIRT_CPUS_MAX * 2) },
     [VIRT_APLIC_M] =      {  0xc000000, APLIC_SIZE(VIRT_CPUS_MAX) },
     [VIRT_APLIC_S] =      {  0xd000000, APLIC_SIZE(VIRT_CPUS_MAX) },
     // lite executor mmio address
@@ -449,71 +449,71 @@ static void create_fdt_socket_aclint(RISCVVirtState *s,
     g_free(aclint_sswi_cells);
 }
 
-static void create_fdt_socket_plic(RISCVVirtState *s,
-                                   const MemMapEntry *memmap, int socket,
-                                   uint32_t *phandle, uint32_t *intc_phandles,
-                                   uint32_t *plic_phandles)
-{
-    int cpu;
-    char *plic_name;
-    uint32_t *plic_cells;
-    unsigned long plic_addr;
-    MachineState *ms = MACHINE(s);
-    static const char * const plic_compat[2] = {
-        "sifive,plic-1.0.0", "riscv,plic0"
-    };
+// static void create_fdt_socket_plic(RISCVVirtState *s,
+//                                    const MemMapEntry *memmap, int socket,
+//                                    uint32_t *phandle, uint32_t *intc_phandles,
+//                                    uint32_t *plic_phandles)
+// {
+//     int cpu;
+//     char *plic_name;
+//     uint32_t *plic_cells;
+//     unsigned long plic_addr;
+//     MachineState *ms = MACHINE(s);
+//     static const char * const plic_compat[2] = {
+//         "sifive,plic-1.0.0", "riscv,plic0"
+//     };
 
-    if (kvm_enabled()) {
-        plic_cells = g_new0(uint32_t, s->soc[socket].num_harts * 2);
-    } else {
-        plic_cells = g_new0(uint32_t, s->soc[socket].num_harts * 4);
-    }
+//     if (kvm_enabled()) {
+//         plic_cells = g_new0(uint32_t, s->soc[socket].num_harts * 2);
+//     } else {
+//         plic_cells = g_new0(uint32_t, s->soc[socket].num_harts * 4);
+//     }
 
-    for (cpu = 0; cpu < s->soc[socket].num_harts; cpu++) {
-        if (kvm_enabled()) {
-            plic_cells[cpu * 2 + 0] = cpu_to_be32(intc_phandles[cpu]);
-            plic_cells[cpu * 2 + 1] = cpu_to_be32(IRQ_S_EXT);
-        } else {
-            plic_cells[cpu * 4 + 0] = cpu_to_be32(intc_phandles[cpu]);
-            plic_cells[cpu * 4 + 1] = cpu_to_be32(IRQ_M_EXT);
-            plic_cells[cpu * 4 + 2] = cpu_to_be32(intc_phandles[cpu]);
-            plic_cells[cpu * 4 + 3] = cpu_to_be32(IRQ_S_EXT);
-        }
-    }
+//     for (cpu = 0; cpu < s->soc[socket].num_harts; cpu++) {
+//         if (kvm_enabled()) {
+//             plic_cells[cpu * 2 + 0] = cpu_to_be32(intc_phandles[cpu]);
+//             plic_cells[cpu * 2 + 1] = cpu_to_be32(IRQ_S_EXT);
+//         } else {
+//             plic_cells[cpu * 4 + 0] = cpu_to_be32(intc_phandles[cpu]);
+//             plic_cells[cpu * 4 + 1] = cpu_to_be32(IRQ_M_EXT);
+//             plic_cells[cpu * 4 + 2] = cpu_to_be32(intc_phandles[cpu]);
+//             plic_cells[cpu * 4 + 3] = cpu_to_be32(IRQ_S_EXT);
+//         }
+//     }
 
-    plic_phandles[socket] = (*phandle)++;
-    plic_addr = memmap[VIRT_PLIC].base + (memmap[VIRT_PLIC].size * socket);
-    plic_name = g_strdup_printf("/soc/plic@%lx", plic_addr);
-    qemu_fdt_add_subnode(ms->fdt, plic_name);
-    qemu_fdt_setprop_cell(ms->fdt, plic_name,
-        "#interrupt-cells", FDT_PLIC_INT_CELLS);
-    qemu_fdt_setprop_cell(ms->fdt, plic_name,
-        "#address-cells", FDT_PLIC_ADDR_CELLS);
-    qemu_fdt_setprop_string_array(ms->fdt, plic_name, "compatible",
-                                  (char **)&plic_compat,
-                                  ARRAY_SIZE(plic_compat));
-    qemu_fdt_setprop(ms->fdt, plic_name, "interrupt-controller", NULL, 0);
-    qemu_fdt_setprop(ms->fdt, plic_name, "interrupts-extended",
-        plic_cells, s->soc[socket].num_harts * sizeof(uint32_t) * 4);
-    qemu_fdt_setprop_cells(ms->fdt, plic_name, "reg",
-        0x0, plic_addr, 0x0, memmap[VIRT_PLIC].size);
-    qemu_fdt_setprop_cell(ms->fdt, plic_name, "riscv,ndev",
-                          VIRT_IRQCHIP_NUM_SOURCES - 1);
-    riscv_socket_fdt_write_id(ms, plic_name, socket);
-    qemu_fdt_setprop_cell(ms->fdt, plic_name, "phandle",
-        plic_phandles[socket]);
+//     plic_phandles[socket] = (*phandle)++;
+//     plic_addr = memmap[VIRT_PLIC].base + (memmap[VIRT_PLIC].size * socket);
+//     plic_name = g_strdup_printf("/soc/plic@%lx", plic_addr);
+//     qemu_fdt_add_subnode(ms->fdt, plic_name);
+//     qemu_fdt_setprop_cell(ms->fdt, plic_name,
+//         "#interrupt-cells", FDT_PLIC_INT_CELLS);
+//     qemu_fdt_setprop_cell(ms->fdt, plic_name,
+//         "#address-cells", FDT_PLIC_ADDR_CELLS);
+//     qemu_fdt_setprop_string_array(ms->fdt, plic_name, "compatible",
+//                                   (char **)&plic_compat,
+//                                   ARRAY_SIZE(plic_compat));
+//     qemu_fdt_setprop(ms->fdt, plic_name, "interrupt-controller", NULL, 0);
+//     qemu_fdt_setprop(ms->fdt, plic_name, "interrupts-extended",
+//         plic_cells, s->soc[socket].num_harts * sizeof(uint32_t) * 4);
+//     qemu_fdt_setprop_cells(ms->fdt, plic_name, "reg",
+//         0x0, plic_addr, 0x0, memmap[VIRT_PLIC].size);
+//     qemu_fdt_setprop_cell(ms->fdt, plic_name, "riscv,ndev",
+//                           VIRT_IRQCHIP_NUM_SOURCES - 1);
+//     riscv_socket_fdt_write_id(ms, plic_name, socket);
+//     qemu_fdt_setprop_cell(ms->fdt, plic_name, "phandle",
+//         plic_phandles[socket]);
 
-    if (!socket) {
-        platform_bus_add_all_fdt_nodes(ms->fdt, plic_name,
-                                       memmap[VIRT_PLATFORM_BUS].base,
-                                       memmap[VIRT_PLATFORM_BUS].size,
-                                       VIRT_PLATFORM_BUS_IRQ);
-    }
+//     if (!socket) {
+//         platform_bus_add_all_fdt_nodes(ms->fdt, plic_name,
+//                                        memmap[VIRT_PLATFORM_BUS].base,
+//                                        memmap[VIRT_PLATFORM_BUS].size,
+//                                        VIRT_PLATFORM_BUS_IRQ);
+//     }
 
-    g_free(plic_name);
+//     g_free(plic_name);
 
-    g_free(plic_cells);
-}
+//     g_free(plic_cells);
+// }
 
 static void create_fdt_socket_lite_executor(RISCVVirtState *s,
                                     const MemMapEntry *memmap, int socket,
@@ -820,9 +820,7 @@ static void create_fdt_sockets(RISCVVirtState *s, const MemMapEntry *memmap,
             phandle_pos -= s->soc[socket].num_harts;
 
             if (s->aia_type == VIRT_AIA_TYPE_NONE) {
-                create_fdt_socket_plic(s, memmap, socket, phandle,
-                                       &intc_phandles[phandle_pos],
-                                       xplic_phandles);
+                // create_fdt_socket_plic(s, memmap, socket, phandle, &intc_phandles[phandle_pos], xplic_phandles);
             } else {
                 create_fdt_socket_aplic(s, memmap, socket,
                                         msi_m_phandle, msi_s_phandle, phandle,
@@ -1166,33 +1164,33 @@ static FWCfgState *create_fw_cfg(const MachineState *ms)
     return fw_cfg;
 }
 
-static DeviceState *virt_create_plic(const MemMapEntry *memmap, int socket,
-                                     int base_hartid, int hart_count)
-{
-    DeviceState *ret;
-    char *plic_hart_config;
+// static DeviceState *virt_create_plic(const MemMapEntry *memmap, int socket,
+//                                      int base_hartid, int hart_count)
+// {
+//     DeviceState *ret;
+//     char *plic_hart_config;
 
-    /* Per-socket PLIC hart topology configuration string */
-    plic_hart_config = riscv_plic_hart_config_string(hart_count);
+//     /* Per-socket PLIC hart topology configuration string */
+//     plic_hart_config = riscv_plic_hart_config_string(hart_count);
 
-    /* Per-socket PLIC */
-    ret = sifive_plic_create(
-            memmap[VIRT_PLIC].base + socket * memmap[VIRT_PLIC].size,
-            plic_hart_config, hart_count, base_hartid,
-            VIRT_IRQCHIP_NUM_SOURCES,
-            ((1U << VIRT_IRQCHIP_NUM_PRIO_BITS) - 1),
-            VIRT_PLIC_PRIORITY_BASE,
-            VIRT_PLIC_PENDING_BASE,
-            VIRT_PLIC_ENABLE_BASE,
-            VIRT_PLIC_ENABLE_STRIDE,
-            VIRT_PLIC_CONTEXT_BASE,
-            VIRT_PLIC_CONTEXT_STRIDE,
-            memmap[VIRT_PLIC].size);
+//     /* Per-socket PLIC */
+//     ret = sifive_plic_create(
+//             memmap[VIRT_PLIC].base + socket * memmap[VIRT_PLIC].size,
+//             plic_hart_config, hart_count, base_hartid,
+//             VIRT_IRQCHIP_NUM_SOURCES,
+//             ((1U << VIRT_IRQCHIP_NUM_PRIO_BITS) - 1),
+//             VIRT_PLIC_PRIORITY_BASE,
+//             VIRT_PLIC_PENDING_BASE,
+//             VIRT_PLIC_ENABLE_BASE,
+//             VIRT_PLIC_ENABLE_STRIDE,
+//             VIRT_PLIC_CONTEXT_BASE,
+//             VIRT_PLIC_CONTEXT_STRIDE,
+//             memmap[VIRT_PLIC].size);
 
-    g_free(plic_hart_config);
+//     g_free(plic_hart_config);
 
-    return ret;
-}
+//     return ret;
+// }
 
 static DeviceState *virt_create_aia(RISCVVirtAIAType aia_type, int aia_guests,
                                     const MemMapEntry *memmap, int socket,
@@ -1467,12 +1465,12 @@ static void virt_machine_init(MachineState *machine)
             }
         }
 
-        riscv_lite_executor_create(memmap[VIRT_LITE_EXECUTOR].base);
+        DeviceState *lite_executor = riscv_lite_executor_create(memmap[VIRT_LITE_EXECUTOR].base, VIRT_IRQCHIP_NUM_SOURCES);
 
         /* Per-socket interrupt controller */
         if (s->aia_type == VIRT_AIA_TYPE_NONE) {
-            s->irqchip[i] = virt_create_plic(memmap, i,
-                                             base_hartid, hart_count);
+            //s->irqchip[i] = virt_create_plic(memmap, i, base_hartid, hart_count);
+            s->irqchip[i] = lite_executor;
         } else {
             s->irqchip[i] = virt_create_aia(s->aia_type, s->aia_guests,
                                             memmap, i, base_hartid,

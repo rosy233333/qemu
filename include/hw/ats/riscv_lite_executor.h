@@ -36,8 +36,11 @@ typedef struct RISCVLiteExecutor
     MemoryRegion mmio;
     TaskQueue *task_queues;
 
+    /* config */
+    uint32_t num_sources; //中断处理相关，中断源的数目？
+
 } RISCVLiteExecutor;
 
-DeviceState *riscv_lite_executor_create(hwaddr addr);
+DeviceState *riscv_lite_executor_create(hwaddr addr, uint32_t num_sources);
 
 #endif
