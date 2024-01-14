@@ -73,7 +73,8 @@ static const MemoryRegionOps riscv_lite_executor_ops = {
 
 static void riscv_lite_executor_irq_request(void *opaque, int irq, int level)
 {
-    info_report("RISCV LITE EXECUTOR RECEIVE IRQ: %d", irq);
+    // 这句是用来测试是否成功接收中断的，但保留这句会在一直打印刷屏，所以注释了。
+    // info_report("RISCV LITE EXECUTOR RECEIVE IRQ: %d", irq);
 
     // RISCVLiteExecutor *s = opaque;
 
