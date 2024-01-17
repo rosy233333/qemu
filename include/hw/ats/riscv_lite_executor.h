@@ -4,13 +4,16 @@
 #include "hw/sysbus.h"
 #include "qemu/queue.h"
 
+
 #define TYPE_RISCV_LITE_EXECUTOR "riscv.lite_executor"
 
 #define RISCV_LITE_EXECUTOR(obj) OBJECT_CHECK(RISCVLiteExecutor, (obj), TYPE_RISCV_LITE_EXECUTOR)
 
 #define MAX_TASK_QUEUE              0x8
 #define MAX_TASK_PER_QUEUE          0x100
-#define MAX_TASK_QUEUE_GROUP        0x4
+#define MAX_ONLINE_STRUCT_GROUP     0x4
+#define MAX_PROCESS                 0x10
+#define MAX_EXTERNAL_INTR           0x10
 
 #define RISCV_LITE_EXECUTOR_MMIO_SIZE   0x1000000
 
@@ -61,19 +64,40 @@
 #define EIH_ENQUEUE_MMIO_COUNT          0x400 // 1024
 #define EIH_END_MMIO_OFFSET             ((EIH_ENQUEUE_MMIO_OFFSET) + (EIH_ENQUEUE_MMIO_SIZE) * (EIH_ENQUEUE_MMIO_COUNT))
 
-#define WRITE_TEST_OFFSET   0x00000000
-#define READ_TEST_OFFSET    0x00000008
+typedef struct {
+    uint64_t ps_mbuf;
+    uint64_t ipc_mbuf;
+    uint64_t index;
+}ProcStatus;
 
-typedef QSIMPLEQ_HEAD(, TaskQueueEntry) TaskQueueHead;
+void proc_status_init(ProcStatus* ps);
+void proc_status_set_online(ProcStatus* ps);
+bool proc_status_is_online(ProcStatus* ps);
+void proc_status_set_offline(ProcStatus* ps);
+void proc_status_add_map(ProcStatus* ps, uint64_t index);
 
-struct TaskQueueEntry {
+typedef QSIMPLEQ_HEAD(, QueueEntry) QueueHead;
+
+struct QueueEntry {
     uint64_t data;
-    QSIMPLEQ_ENTRY(TaskQueueEntry) next;
+    QSIMPLEQ_ENTRY(QueueEntry) next;
 };
 
 typedef struct {
-    TaskQueueHead head;
-} TaskQueue;
+    QueueHead head;
+} Queue;
+
+void queue_init(Queue* queue);
+void queue_push(Queue* queue, uint64_t data);
+uint64_t queue_pop(Queue* queue);
+
+typedef struct {
+    Queue *task_queues;
+}PriorityScheduler;
+
+void ps_init(PriorityScheduler* ps);
+void ps_push(PriorityScheduler* ps, uint64_t priority, uint64_t data);
+uint64_t ps_pop(PriorityScheduler* ps);
 
 typedef struct RISCVLiteExecutor
 {
@@ -82,7 +106,10 @@ typedef struct RISCVLiteExecutor
 
     /*< public >*/
     MemoryRegion mmio;
-    TaskQueue *task_queues;
+    ProcStatus *pst;
+    PriorityScheduler *pschedulers;
+    // external interrupt handler queues
+    Queue *eihqs;
 
     /* config */
     uint32_t num_sources; //中断处理相关，中断源的数目？

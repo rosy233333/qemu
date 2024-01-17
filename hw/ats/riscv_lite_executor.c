@@ -30,27 +30,17 @@
 
 static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned size)
 {
-    // info_report("READ LITE EXECUTOR: ADDR 0x%lx", addr);
-    // RISCVLiteExecutor *lite_executor = opaque;
-    // if (addr == READ_TEST_OFFSET) {
-    //     TaskQueueHead *head = &lite_executor->task_queues[0].head;
-    //     uint64_t res = 0;
-    //     if (head->sqh_first != NULL) {
-    //         struct TaskQueueEntry *task_entry = head->sqh_first;
-    //         res = task_entry->data;
-    //         g_free(task_entry);
-    //         QSIMPLEQ_REMOVE_HEAD(head, next);
-    //     }
-    //     return res;
-    // } else {
-    //     return 0;
-    // }
-
+    RISCVLiteExecutor *lite_executor = opaque;
     if(addr < EXT_INTR_HANDLER_MMIO_OFFSET) {
         // Process area
         unsigned process_vec_addr = addr;
         unsigned process_index = process_vec_addr / PROCESS_MMIO_SIZE;
         unsigned process_addr = process_vec_addr % PROCESS_MMIO_SIZE;
+        assert(process_index < MAX_PROCESS);
+        if (!proc_status_is_online(&lite_executor->pst[process_index])) {
+            info_report("THE TARGET PROCESS IS OFFLINE");
+            return 0;
+        }
         if(process_addr < IPC_HANDLER_MMIO_OFFSET) {
             // Priority scheduler area
             unsigned ps_addr = process_addr;
@@ -68,10 +58,8 @@ static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned siz
             }
             else if(ps_addr < PS_ENQUEUE_MMIO_OFFSET) {
                 // Priority scheduler dequeue field
-                unsigned dequeue_addr = ps_addr - PS_DEQUEUE_MMIO_OFFSET;
-                // code with `process_index`, `dequeue_addr` and `size`
-                info_report("READ LITE EXECUTOR: addr 0x%08lx, size 0x%x -> Priority scheduler dequeue field, process %d, inner addr 0x%04x", addr, size, process_index, dequeue_addr);
-                return 0;
+                uint64_t index = lite_executor->pst[process_index].index;
+                return ps_pop(&lite_executor->pschedulers[index]);
             }
             else {
                 // Priority scheduler enqueue field
@@ -152,19 +140,17 @@ static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned siz
 static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size)
 {
-    // info_report("WRITE LITE EXECUTOR: ADDR 0x%lx VALUE 0x%lx", addr, value);
-    // RISCVLiteExecutor *lite_executor = opaque;
-    // if (addr == WRITE_TEST_OFFSET) {
-    //     struct TaskQueueEntry *task_entry = g_new0(struct TaskQueueEntry, 1);
-    //     task_entry->data = value;
-    //     QSIMPLEQ_INSERT_TAIL(&lite_executor->task_queues[0].head, task_entry, next);
-    // }
-
+    RISCVLiteExecutor *lite_executor = opaque;
     if(addr < EXT_INTR_HANDLER_MMIO_OFFSET) {
         // Process area
         unsigned process_vec_addr = addr;
         unsigned process_index = process_vec_addr / PROCESS_MMIO_SIZE;
         unsigned process_addr = process_vec_addr % PROCESS_MMIO_SIZE;
+        assert(process_index < MAX_PROCESS);
+        if (!proc_status_is_online(&lite_executor->pst[process_index])) {
+            info_report("THE TARGET PROCESS IS OFFLINE");
+            return;
+        }
         if(process_addr < IPC_HANDLER_MMIO_OFFSET) {
             // Priority scheduler area
             unsigned ps_addr = process_addr;
@@ -189,6 +175,9 @@ static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
                 unsigned enqueue_vec_addr = ps_addr - PS_ENQUEUE_MMIO_OFFSET;
                 unsigned enqueue_index = enqueue_vec_addr / PS_ENQUEUE_MMIO_SIZE;
                 unsigned enqueue_addr = enqueue_vec_addr % PS_ENQUEUE_MMIO_SIZE;
+                assert(enqueue_index < MAX_TASK_QUEUE);
+                uint64_t index = lite_executor->pst[process_index].index;
+                ps_push(&lite_executor->pschedulers[index], enqueue_index, value);
                 info_report("WRITE LITE EXECUTOR: addr 0x%08lx, size 0x%x, value 0x%08lx -> Priority scheduler enqueue field, process %d, queue %d, inner addr 0x%04x", addr, size, value, process_index, enqueue_index, enqueue_addr);
             }
         }
@@ -240,6 +229,7 @@ static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
             unsigned enqueue_vec_addr = eih_addr - EIH_ENQUEUE_MMIO_OFFSET;
             unsigned enqueue_index = enqueue_vec_addr / EIH_ENQUEUE_MMIO_SIZE;
             unsigned enqueue_addr = enqueue_vec_addr % EIH_ENQUEUE_MMIO_SIZE;
+            queue_push(&lite_executor->eihqs[enqueue_index], value);
             info_report("WRITE LITE EXECUTOR: addr 0x%08lx, size 0x%x, value 0x%08lx -> Extern interrupt handler enqueue field, queue %d, inner addr 0x%04x", addr, size, value, enqueue_index, enqueue_addr);
         }
     }
@@ -264,7 +254,15 @@ static void riscv_lite_executor_irq_request(void *opaque, int irq, int level)
     // 这句是用来测试是否成功接收中断的，但保留这句会在一直打印刷屏，所以注释了。
     // info_report("RISCV LITE EXECUTOR RECEIVE IRQ: %d", irq);
 
-    // RISCVLiteExecutor *s = opaque;
+    RISCVLiteExecutor *lite_executor = opaque;
+    // test serial interrupt handler
+    assert(irq < MAX_EXTERNAL_INTR);
+    uint64_t handler = queue_pop(&lite_executor->eihqs[irq]);
+    if (handler != 0) {
+        uint64_t index = lite_executor->pst[0].index;
+        ps_push(&lite_executor->pschedulers[index], 0, handler);
+        info_report("external interrupt handler 0x%08lx", handler);
+    }
 
     // 外部中断到来后的操作，待实现
 }
@@ -282,11 +280,26 @@ static void riscv_lite_executor_realize(DeviceState *dev, Error **errp)
 
     info_report("LOW 0x%x HIGH 0x%x", (uint32_t)lite_executor->mmio.addr, (uint32_t)lite_executor->mmio.size);
 
-    // 如果有为lite executor增添了数组属性，在这里申请空间
-    lite_executor->task_queues = g_new0(TaskQueue, MAX_TASK_QUEUE);
+    // init process status table 
+    lite_executor->pst = g_new0(ProcStatus, MAX_PROCESS);
     int i = 0;
-    for(i = 0; i < MAX_TASK_QUEUE; i++) {
-        QSIMPLEQ_INIT(&lite_executor->task_queues[i].head);
+    for(i = 0; i < MAX_PROCESS; i++) {
+        proc_status_init(&lite_executor->pst[i]);
+        // TODO: This line should be removed. But We just assue that the top MAX_ONLINE_STRUCT_GROUP processes are online.
+        if (i < MAX_ONLINE_STRUCT_GROUP) {
+            proc_status_set_online(&lite_executor->pst[i]);
+            proc_status_add_map(&lite_executor->pst[i], i);
+        }
+    }
+    // init external interrupt handler queues
+    lite_executor->eihqs = g_new0(Queue, MAX_EXTERNAL_INTR);
+    for(i = 0; i < MAX_EXTERNAL_INTR; i++) {
+        queue_init(&lite_executor->eihqs[i]);
+    }
+    // init priority schedulers
+    lite_executor->pschedulers = g_new0(PriorityScheduler, MAX_ONLINE_STRUCT_GROUP);
+    for(i = 0; i < MAX_ONLINE_STRUCT_GROUP; i++) {
+        ps_init(&lite_executor->pschedulers[i]);
     }
 
     //注册GPIO端口，参考sifive_plic.c:380..387
