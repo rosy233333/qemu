@@ -110,6 +110,11 @@ typedef struct RISCVLiteExecutor
     PriorityScheduler *pschedulers;
     // external interrupt handler queues
     Queue *eihqs;
+    // rw buffer? convert 32bit read to 64bit read
+    uint64_t read_buf;
+    uint64_t expect_read_addr; // -1 indicates no expect address
+    uint64_t write_buf;
+    uint64_t expect_write_addr; // -1 indicates no expect address
 
     /* config */
     uint32_t num_sources; //中断处理相关，中断源的数目？

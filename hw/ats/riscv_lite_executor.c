@@ -59,7 +59,6 @@ static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned siz
             else if(ps_addr < PS_ENQUEUE_MMIO_OFFSET) {
                 // Priority scheduler dequeue field
                 uint64_t index = lite_executor->pst[process_index].index;
-                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Priority scheduler dequeue field, process %d", addr, process_index);
                 return ps_pop(&lite_executor->pschedulers[index]);
             }
             else {
@@ -160,7 +159,6 @@ static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
             }
             else if(ps_addr < PS_ENQUEUE_MMIO_OFFSET) {
                 // Priority scheduler dequeue field
-                // code with `process_index`, `dequeue_addr` and `size`
                 info_report("WRITE LITE EXECUTOR: addr 0x%08lx, value 0x%016lx -> Priority scheduler dequeue field, process %d", addr, value, process_index);
             }
             else {
@@ -252,7 +250,7 @@ static void riscv_lite_executor_irq_request(void *opaque, int irq, int level)
     if (handler != 0) {
         uint64_t index = lite_executor->pst[0].index;
         ps_push(&lite_executor->pschedulers[index], 0, handler);
-        info_report("external interrupt handler 0x%08lx", handler);
+        info_report("external interrupt handler 0x%016lx", handler);
     }
 
     // 外部中断到来后的操作，待实现
@@ -292,6 +290,10 @@ static void riscv_lite_executor_realize(DeviceState *dev, Error **errp)
     for(i = 0; i < MAX_ONLINE_STRUCT_GROUP; i++) {
         ps_init(&lite_executor->pschedulers[i]);
     }
+
+    // init rw expect addr, -1 indicates no expect address
+    lite_executor->expect_read_addr = (uint64_t)(-1);
+    lite_executor->expect_write_addr = (uint64_t)(-1);
 
     //注册GPIO端口，参考sifive_plic.c:380..387
     {
