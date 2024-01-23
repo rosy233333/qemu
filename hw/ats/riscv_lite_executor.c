@@ -28,8 +28,10 @@
 #include "hw/ats/riscv_lite_executor.h"
 #include "qemu/queue.h"
 
-static uint64_t riscv_lite_executor_read_64bit(RISCVLiteExecutor *lite_executor, hwaddr addr)
+static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned size)
 {
+    assert(size == 8);
+    RISCVLiteExecutor *lite_executor = opaque;
     if(addr < EXT_INTR_HANDLER_MMIO_OFFSET) {
         // Process area
         unsigned process_vec_addr = addr;
@@ -46,26 +48,25 @@ static uint64_t riscv_lite_executor_read_64bit(RISCVLiteExecutor *lite_executor,
             if(ps_addr < PS_MEMBUF_MMIO_OFFSET) {
                 // Priority scheduler control field
                 unsigned control_addr = ps_addr;
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx -> Priority scheduler control field, process %d, inner addr 0x%04x", addr, process_index, control_addr);
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Priority scheduler control field, process %d, inner addr 0x%04x", addr, process_index, control_addr);
                 return 0;
             }
             else if(ps_addr < PS_DEQUEUE_MMIO_OFFSET) {
                 // Priority scheduler membuf field
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx -> Priority scheduler membuf field, process %d", addr, process_index);
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Priority scheduler membuf field, process %d", addr, process_index);
                 return 0;
             }
             else if(ps_addr < PS_ENQUEUE_MMIO_OFFSET) {
                 // Priority scheduler dequeue field
                 uint64_t index = lite_executor->pst[process_index].index;
-                uint64_t value = ps_pop(&lite_executor->pschedulers[index]);
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx, value 0x%016lx -> Priority scheduler dequeue field, process %d", addr, value, process_index);
-                return value;
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Priority scheduler dequeue field, process %d", addr, process_index);
+                return ps_pop(&lite_executor->pschedulers[index]);
             }
             else {
                 // Priority scheduler enqueue field
                 unsigned enqueue_vec_addr = ps_addr - PS_ENQUEUE_MMIO_OFFSET;
                 unsigned enqueue_index = enqueue_vec_addr / PS_ENQUEUE_MMIO_SIZE;
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx -> Priority scheduler enqueue field, process %d, queue %d", addr, process_index, enqueue_index);
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Priority scheduler enqueue field, process %d, queue %d", addr, process_index, enqueue_index);
                 return 0;
             }
         }
@@ -74,35 +75,35 @@ static uint64_t riscv_lite_executor_read_64bit(RISCVLiteExecutor *lite_executor,
             unsigned ih_addr = process_addr - IPC_HANDLER_MMIO_OFFSET;
             if(ih_addr < IH_MEMBUF_MMIO_OFFSET) {
                 // IPC handler control field
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx -> IPC handler control field, process %d", addr, process_index);
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> IPC handler control field, process %d", addr, process_index);
                 return 0;
             }
             else if(ih_addr < IH_MESSAGE_POINTER_MMIO_OFFSET) {
                 // IPC handler membuf field
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx -> IPC handler membuf field, process %d", addr, process_index);
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> IPC handler membuf field, process %d", addr, process_index);
                 return 0;
             }
             else if(ih_addr < IH_BQ_MMIO_OFFSET) {
                 // IPC handler message pointer field
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx -> IPC handler message pointer field, process %d", addr, process_index);
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> IPC handler message pointer field, process %d", addr, process_index);
                 return 0;
             }
             else if(ih_addr < IH_RESERVED_MMIO_OFFSET) {
                 // IPC handler bq field
                 unsigned bq_vec_addr = ih_addr - IH_BQ_MMIO_OFFSET;
                 unsigned bq_index = bq_vec_addr / IH_BQ_MMIO_SIZE;
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx-> IPC handler bq field, process %d, bq %d", addr, process_index, bq_index);
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> IPC handler bq field, process %d, bq %d", addr, process_index, bq_index);
                 return 0;
             }
             else {
                 // IPC handler reserved area
-                info_report("READ  LITE EXECUTOR: addr 0x%08lx -> IPC handler reserved area, process %d", addr, process_index);
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> IPC handler reserved area, process %d", addr, process_index);
                 return (uint64_t)(-1);
             }
         }
         else {
             // Process reserved area
-            info_report("READ  LITE EXECUTOR: addr 0x%08lx -> Process reserved area, process %d", addr, process_index);
+            info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Process reserved area, process %d", addr, process_index);
             return (uint64_t)(-1);
         }
     }
@@ -112,27 +113,30 @@ static uint64_t riscv_lite_executor_read_64bit(RISCVLiteExecutor *lite_executor,
         if(eih_addr < EIH_ENQUEUE_MMIO_OFFSET) {
             // Extern interrupt handler control field
             unsigned control_addr = eih_addr;
-            info_report("READ  LITE EXECUTOR: addr 0x%08lx -> Extern interrupt handler control field, inner addr 0x%04x", addr, control_addr);
+            info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Extern interrupt handler control field, inner addr 0x%04x", addr, control_addr);
             return 0;
         }
         else {
             // Extern interrupt handler enqueue field
             unsigned enqueue_vec_addr = eih_addr - EIH_ENQUEUE_MMIO_OFFSET;
             unsigned enqueue_index = enqueue_vec_addr / EIH_ENQUEUE_MMIO_SIZE;
-            info_report("READ  LITE EXECUTOR: addr 0x%08lx -> Extern interrupt handler enqueue field, queue %d", addr, enqueue_index);
+            info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Extern interrupt handler enqueue field, queue %d", addr, enqueue_index);
             return 0;
         }
     }
     else {
         // Reserved area
-        info_report("READ  LITE EXECUTOR: addr 0x%08lx -> Global reserved area", addr);
+        info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Global reserved area", addr);
         return (uint64_t)(-1);
     }
     return 0;
 }
 
-static void riscv_lite_executor_write_64bit(RISCVLiteExecutor *lite_executor, hwaddr addr, uint64_t value)
+static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
+                              unsigned size)
 {
+    assert(size == 8);
+    RISCVLiteExecutor *lite_executor = opaque;
     if(addr < EXT_INTR_HANDLER_MMIO_OFFSET) {
         // Process area
         unsigned process_vec_addr = addr;
@@ -222,69 +226,15 @@ static void riscv_lite_executor_write_64bit(RISCVLiteExecutor *lite_executor, hw
     }
 }
 
-static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned size) {
-    RISCVLiteExecutor *lite_executor = opaque;
-    if(size == 4) {
-        if(lite_executor->expect_read_addr == (u_int64_t)(-1)) {
-            // read low halfword
-            assert((addr & 0x7) == 0);
-            lite_executor->expect_read_addr = addr + 4;
-            lite_executor->read_buf = riscv_lite_executor_read_64bit(lite_executor, addr);
-            return lite_executor->read_buf & 0xffffffff;
-        }
-        else if(lite_executor->expect_read_addr == addr) {
-            // read high halfword
-            lite_executor->expect_read_addr = (u_int64_t)(-1);
-            return (lite_executor->read_buf & 0xffffffff00000000) >> 32;
-        }
-        else {
-            info_report("READ  LITE EXECUTOR: invalid read address %08lx", addr);
-            return (uint64_t)(-1);
-        }
-    }
-    else if(size == 8) {
-        assert((addr & 0x7) == 0);
-        return riscv_lite_executor_read_64bit(lite_executor, addr);
-    }
-    else {
-        info_report("READ  LITE EXECUTOR: invalid read size %d", size);
-        return (uint64_t)(-1);
-    }
-}
-
-static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value, unsigned size) {
-    RISCVLiteExecutor *lite_executor = opaque;
-    if(size == 4) {
-        if(lite_executor->expect_write_addr == (u_int64_t)(-1)) {
-            // write low halfword
-            assert((addr & 0x7) == 0);
-            lite_executor->expect_write_addr = addr + 4;
-            lite_executor->write_buf = value;
-        }
-        else if(lite_executor->expect_write_addr == addr) {
-            // write high halfword
-            lite_executor->expect_write_addr = (u_int64_t)(-1);
-            lite_executor->write_buf = lite_executor->write_buf | (value << 32);
-            riscv_lite_executor_write_64bit(lite_executor, addr - 4, lite_executor->write_buf);
-        }
-        else {
-            info_report("WRITE LITE EXECUTOR: invalid write address %08lx", addr);
-        }
-    }
-    else if(size == 8) {
-        assert((addr & 0x7) == 0);
-        riscv_lite_executor_write_64bit(lite_executor, addr, value);
-    }
-    else {
-        info_report("WRITE LITE EXECUTOR: invalid write size %d", size);
-    }
-}
-
 static const MemoryRegionOps riscv_lite_executor_ops = {
     .read = riscv_lite_executor_read,
     .write = riscv_lite_executor_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
+        .min_access_size = 8,
+        .max_access_size = 8
+    },
+    .impl = {
         .min_access_size = 8,
         .max_access_size = 8
     }
