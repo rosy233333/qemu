@@ -59,6 +59,7 @@ static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned siz
             else if(ps_addr < PS_ENQUEUE_MMIO_OFFSET) {
                 // Priority scheduler dequeue field
                 uint64_t index = lite_executor->pst[process_index].index;
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Priority scheduler dequeue field, process %d", addr, process_index);
                 return ps_pop(&lite_executor->pschedulers[index]);
             }
             else {
@@ -134,6 +135,7 @@ static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned siz
 static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
                               unsigned size)
 {
+    assert(size == 8);
     RISCVLiteExecutor *lite_executor = opaque;
     if(addr < EXT_INTR_HANDLER_MMIO_OFFSET) {
         // Process area
