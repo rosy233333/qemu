@@ -27,28 +27,48 @@
 #include "qemu/timer.h"
 #include "hw/ats/riscv_lite_executor.h"
 #include "qemu/queue.h"
+#include "qemu/atomic.h"
+
+// `acquire_lock` and `release_lock` must use in pair
+static void acquire_lock(RISCVLiteExecutor *lite_executor) {
+    while(qatomic_xchg(&(lite_executor->inner_lock), 1) == 1);
+}
+
+static void release_lock(RISCVLiteExecutor *lite_executor) {
+    if(qatomic_xchg(&(lite_executor->inner_lock), 0) != 1) {
+        info_report("error: release a lock that do not hold");
+    }
+}
 
 static uint64_t riscv_lite_executor_read(void *opaque, hwaddr addr, unsigned size)
 {
     assert(size == 8);
     RISCVLiteExecutor *lite_executor = opaque;
-
+    // info_report(" READ LITE EXECUTOR: addr 0x%08lx", addr);
     unsigned process_vec_addr = addr;
     unsigned process_index = process_vec_addr / PROCESS_MMIO_SIZE;
     unsigned process_addr = process_vec_addr % PROCESS_MMIO_SIZE;
     assert(process_index < MAX_PROCESS);
+    acquire_lock(lite_executor);
     if (!proc_status_is_online(&lite_executor->pst[process_index])) {
         info_report("THE TARGET PROCESS IS OFFLINE");
         return 0;
     }
+    release_lock(lite_executor);
     if(process_addr < IPC_HANDLER_MMIO_OFFSET) {
         // Priority scheduler area
         unsigned ps_addr = process_addr;
         if(ps_addr < PS_ENQUEUE_MMIO_OFFSET) {
             // Priority scheduler dequeue field
+            acquire_lock(lite_executor);
             uint64_t index = lite_executor->pst[process_index].index;
-            // info_report(" READ LITE EXECUTOR: addr 0x%08lx -> Priority scheduler dequeue field, process %d", addr, process_index);
-            return ps_pop(&lite_executor->pschedulers[index]);
+            uint64_t value = ps_pop(&lite_executor->pschedulers[index]);
+            release_lock(lite_executor);
+            // uint64_t value = 0;
+            if(value != 0) {
+                info_report(" READ LITE EXECUTOR: addr 0x%08lx, value 0x%016lx -> Priority scheduler dequeue field, process %d", addr, value, process_index);
+            }
+            return value;
         }
         else {
             // Priority scheduler enqueue field
@@ -96,10 +116,12 @@ static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
     unsigned process_index = process_vec_addr / PROCESS_MMIO_SIZE;
     unsigned process_addr = process_vec_addr % PROCESS_MMIO_SIZE;
     assert(process_index < MAX_PROCESS);
+    acquire_lock(lite_executor);
     if (!proc_status_is_online(&lite_executor->pst[process_index])) {
         info_report("THE TARGET PROCESS IS OFFLINE");
         return;
     }
+    release_lock(lite_executor);
     if(process_addr < IPC_HANDLER_MMIO_OFFSET) {
         // Priority scheduler area
         unsigned ps_addr = process_addr;
@@ -112,8 +134,10 @@ static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
             unsigned enqueue_vec_addr = ps_addr - PS_ENQUEUE_MMIO_OFFSET;
             unsigned enqueue_index = enqueue_vec_addr / PS_ENQUEUE_MMIO_SIZE;
             assert(enqueue_index < MAX_TASK_QUEUE);
+            acquire_lock(lite_executor);
             uint64_t index = lite_executor->pst[process_index].index;
             ps_push(&lite_executor->pschedulers[index], enqueue_index, value);
+            release_lock(lite_executor);
             info_report("WRITE LITE EXECUTOR: addr 0x%08lx, value 0x%016lx -> Priority scheduler enqueue field, process %d, queue %d", addr, value, process_index, enqueue_index);
         }
     }
@@ -136,8 +160,10 @@ static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
         unsigned eih_addr = process_addr - EXTERNAL_INTERRUPT_HANDLER_MMIO_OFFSET;
         unsigned enqueue_vec_addr = eih_addr - EIH_ENQUEUE_MMIO_OFFSET;
         unsigned enqueue_index = enqueue_vec_addr / EIH_ENQUEUE_MMIO_SIZE;
+        acquire_lock(lite_executor);
         uint64_t index = lite_executor->pst[process_index].index;
         eih_push(&lite_executor->eihs[index], enqueue_index, value);
+        release_lock(lite_executor);
         info_report("WRITE LITE EXECUTOR: addr 0x%08lx, value 0x%016lx -> Extern interrupt handler enqueue field, process %d, queue %d", addr, value, process_index, enqueue_index);
     }
 }
@@ -166,8 +192,10 @@ static void riscv_lite_executor_irq_request(void *opaque, int irq, int level)
     assert(irq < MAX_EXTERNAL_INTR);
     uint64_t handler = eih_pop(&lite_executor->eihs[0], irq); // 目前将所有中断交由0号进程处理
     if (handler != 0) {
+        acquire_lock(lite_executor);
         uint64_t index = lite_executor->pst[0].index;
         ps_push(&lite_executor->pschedulers[index], 0, handler);
+        release_lock(lite_executor);
         info_report("external interrupt handler 0x%016lx, process %d", handler, 0);
     }
 

@@ -50,8 +50,9 @@ uint64_t queue_pop(Queue* queue) {
     if (head->sqh_first != NULL) {
         struct QueueEntry *entry = head->sqh_first;
         res = entry->data;
-        g_free(entry);
+        
         QSIMPLEQ_REMOVE_HEAD(head, next);
+        g_free(entry);
         return res;
     }
     return res;
@@ -81,8 +82,10 @@ uint64_t ps_pop(PriorityScheduler* ps) {
         if (head->sqh_first != NULL) {
             struct QueueEntry *task_entry = head->sqh_first;
             res = task_entry->data;
-            g_free(task_entry);
+            // info_report("ps_pop: res = %016lx", res);
+
             QSIMPLEQ_REMOVE_HEAD(head, next);
+            g_free(task_entry); // 这一句会引起段错误
             return res;
         }
     }
