@@ -85,7 +85,7 @@ uint64_t ps_pop(PriorityScheduler* ps) {
             // info_report("ps_pop: res = %016lx", res);
 
             QSIMPLEQ_REMOVE_HEAD(head, next);
-            g_free(task_entry); // 这一句会引起段错误
+            g_free(task_entry);
             return res;
         }
     }
@@ -113,8 +113,9 @@ uint64_t eih_pop(ExternalInterruptHandler* eih, uint64_t intr_num) {
     if (head->sqh_first != NULL) {
         struct QueueEntry *eih_entry = head->sqh_first;
         uint64_t res = eih_entry->data;
-        g_free(eih_entry);
+        
         QSIMPLEQ_REMOVE_HEAD(head, next);
+        g_free(eih_entry);
         return res;
     }
     else {

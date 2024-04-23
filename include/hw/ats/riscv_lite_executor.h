@@ -113,8 +113,10 @@ typedef struct RISCVLiteExecutor
     uint64_t expect_read_addr; // -1 indicates no expect address
     uint64_t write_buf;
     uint64_t expect_write_addr; // -1 indicates no expect address
-    // lock for operations that changes inner state
-    uint8_t inner_lock; // 0: not locked, 1: locked
+    // lock for operations that changes corresponding data
+    uint8_t *pst_locks;
+    uint8_t *pscheduler_locks;
+    uint8_t *eih_locks;
 
     /* config */
     uint32_t num_sources; //中断处理相关，中断源的数目？
